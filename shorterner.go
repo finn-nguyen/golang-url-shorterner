@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"io/ioutil"
+	"net/http"
+	"strings"
 
 	"gopkg.in/yaml.v2"
 )
@@ -13,6 +15,8 @@ type Mapper struct {
 	fullUrl string
 	shorternUrl string
 }
+
+var data map[string]string
 
 func main() {
 	
@@ -26,11 +30,10 @@ func main() {
 
 	// Run command
 	runCommand := flag.NewFlagSet("run", flag.ExitOnError)
-	port := addCommand.String("p", "", "add a new url")
+	port := runCommand.Int("p", 8080, "Start a server")
 
 	// Read file
 	yamlFile, _ := ioutil.ReadFile("urls.yaml")
-	var data map[string]string
 	yaml.Unmarshal([]byte(yamlFile), &data)
 
 	switch os.Args[1] {
@@ -41,7 +44,13 @@ func main() {
 		ioutil.WriteFile("urls.yaml", []byte(text), 0644)
 	case "run":
 		runCommand.Parse(os.Args[2:])
-		fmt.Println("%v", *port)
+		http.HandleFunc("/", serverHandler)
+		serverPort := fmt.Sprintf(":%d", *port)
+		fmt.Println("Server is running at", serverPort)
+		if err := http.ListenAndServe(serverPort, nil); err != nil {
+			panic(err)
+		}
+
 	default:
 		flag.Parse()
 		if *listFlag {
@@ -55,5 +64,16 @@ func main() {
 			text, _ := yaml.Marshal(data)
 			ioutil.WriteFile("urls.yaml", []byte(text), 0644)
 		}
+	}
+}
+
+func serverHandler(w http.ResponseWriter, r *http.Request) {
+	shortUrl := r.URL.Path
+	shortUrl = strings.TrimPrefix(shortUrl, "/")
+
+	if url, ok := data[shortUrl]; ok {
+		http.Redirect(w, r, url, http.StatusSeeOther)
+	} else {
+		w.Write([]byte("Page not found"))
 	}
 }
